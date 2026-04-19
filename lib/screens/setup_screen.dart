@@ -70,6 +70,8 @@ class _SetupScreenState extends State<SetupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final canGoBack = KioskApi.isConfigured;
+
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
@@ -81,6 +83,16 @@ class _SetupScreenState extends State<SetupScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 40),
               child: Column(
                 children: [
+                  if (canGoBack)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: () => Navigator.pushReplacementNamed(context, '/kiosk'),
+                        icon: const Icon(Icons.arrow_back, color: Colors.white),
+                        label: const Text('Back to Kiosk', style: TextStyle(color: Colors.white)),
+                      ),
+                    ),
+                  const SizedBox(height: 8),
                   Container(
                     width: 80, height: 80,
                     decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
