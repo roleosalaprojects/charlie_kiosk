@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../config/api.dart';
 
-enum KioskState { idle, loading, success, error }
+enum KioskState { idle, loading, confirm, success, error }
 
 class KioskScreen extends StatefulWidget {
   const KioskScreen({super.key});
@@ -24,6 +24,9 @@ class _KioskScreenState extends State<KioskScreen> {
   String _employeeName = '';
   String? _photoUrl;
   String _statusDetail = '';
+  String? _pendingAction;
+  String? _pendingEndpoint;
+  String? _pendingCode;
   Timer? _resetTimer;
   Timer? _clockTimer;
   String _currentTime = '';
@@ -54,10 +57,18 @@ class _KioskScreenState extends State<KioskScreen> {
     if (code.isEmpty) return;
     _inputCtrl.clear();
 
+    // If we're in confirm state and the same code is scanned again, execute
+    if (_state == KioskState.confirm && _pendingCode == code && _pendingEndpoint != null) {
+      await _executeAction();
+      return;
+    }
+
+    // If different code while confirming, cancel and look up new employee
+    _resetPending();
+
     setState(() { _state = KioskState.loading; _message = 'Looking up...'; });
 
     try {
-      // First lookup
       final lookupRes = await _dio.get('/lookup', queryParameters: {'code': code});
       final emp = lookupRes.data['employee'];
       final today = lookupRes.data['today'];
@@ -65,7 +76,7 @@ class _KioskScreenState extends State<KioskScreen> {
       _employeeName = emp['name'] ?? '';
       _photoUrl = emp['photo_url'];
 
-      // Determine action: clock-in, break-out, break-in, or clock-out
+      // Determine next action
       String action;
       String endpoint;
       if (today == null || today['clock_in'] == null) {
@@ -81,25 +92,30 @@ class _KioskScreenState extends State<KioskScreen> {
         action = 'Clock Out';
         endpoint = '/clock-out';
       } else {
-        // Already completed
         setState(() {
           _state = KioskState.success;
           _message = 'Day Complete';
           _statusDetail = 'In: ${today['clock_in']} | Out: ${today['clock_out']}';
-          
         });
         _scheduleReset();
         return;
       }
 
-      // Execute action
-      final res = await _dio.post(endpoint, data: {'code': code});
+      // Show confirmation — don't execute yet
+      _pendingAction = action;
+      _pendingEndpoint = endpoint;
+      _pendingCode = code;
 
       setState(() {
-        _state = KioskState.success;
-        _message = res.data['message'] ?? '$action recorded';
-        _statusDetail = res.data['tardiness'] ?? res.data['hours_worked'] ?? '';
+        _state = KioskState.confirm;
+        _message = action;
+        _statusDetail = today != null && today['clock_in'] != null ? 'In: ${today['clock_in']}' : '';
       });
+
+      // Auto-cancel after 10 seconds if not confirmed
+      _resetTimer?.cancel();
+      _resetTimer = Timer(const Duration(seconds: 10), _resetToIdle);
+
     } on DioException catch (e) {
       setState(() {
         _state = KioskState.error;
@@ -107,9 +123,48 @@ class _KioskScreenState extends State<KioskScreen> {
         _employeeName = '';
         _photoUrl = null;
       });
+      _scheduleReset();
+    }
+  }
+
+  Future<void> _executeAction() async {
+    setState(() { _state = KioskState.loading; _message = 'Recording...'; });
+
+    try {
+      final res = await _dio.post(_pendingEndpoint!, data: {'code': _pendingCode});
+
+      setState(() {
+        _state = KioskState.success;
+        _message = res.data['message'] ?? '${_pendingAction} recorded';
+        _statusDetail = res.data['tardiness'] ?? res.data['hours_worked'] ?? '';
+      });
+    } on DioException catch (e) {
+      setState(() {
+        _state = KioskState.error;
+        _message = e.response?.data?['message'] ?? 'Failed';
+      });
     }
 
+    _resetPending();
     _scheduleReset();
+  }
+
+  void _resetPending() {
+    _pendingAction = null;
+    _pendingEndpoint = null;
+    _pendingCode = null;
+  }
+
+  void _resetToIdle() {
+    _resetPending();
+    setState(() {
+      _state = KioskState.idle;
+      _message = '';
+      _employeeName = '';
+      _photoUrl = null;
+      _statusDetail = '';
+    });
+    _focusNode.requestFocus();
   }
 
   void _scheduleReset() {
@@ -120,7 +175,6 @@ class _KioskScreenState extends State<KioskScreen> {
         _message = '';
         _employeeName = '';
         _photoUrl = null;
-        
         _statusDetail = '';
       });
       _focusNode.requestFocus();
@@ -229,6 +283,44 @@ class _KioskScreenState extends State<KioskScreen> {
             SizedBox(width: 60, height: 60, child: CircularProgressIndicator(color: Color(0xFF009EF7), strokeWidth: 3)),
             SizedBox(height: 20),
             Text('Processing...', style: TextStyle(color: Colors.white, fontSize: 18)),
+          ],
+        );
+
+      case KioskState.confirm:
+        return Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (_photoUrl != null && _photoUrl!.isNotEmpty)
+              CircleAvatar(radius: 50, backgroundImage: CachedNetworkImageProvider(_photoUrl!))
+            else
+              CircleAvatar(radius: 50, backgroundColor: Colors.white.withValues(alpha: 0.1), child: const Icon(Icons.person, size: 50, color: Colors.white)),
+            const SizedBox(height: 16),
+            Text(_employeeName, style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w700)),
+            if (_statusDetail.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(_statusDetail, style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 14)),
+            ],
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFC700).withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFFFC700).withValues(alpha: 0.5)),
+              ),
+              child: Column(
+                children: [
+                  Text('Next: $_message', style: const TextStyle(color: Color(0xFFFFC700), fontSize: 22, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 6),
+                  Text('Scan again to confirm', style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 14)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: _resetToIdle,
+              child: Text('Cancel', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 13)),
+            ),
           ],
         );
 
