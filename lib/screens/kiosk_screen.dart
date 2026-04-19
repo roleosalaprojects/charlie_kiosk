@@ -57,13 +57,7 @@ class _KioskScreenState extends State<KioskScreen> {
     if (code.isEmpty) return;
     _inputCtrl.clear();
 
-    // If we're in confirm state and the same code is scanned again, execute
-    if (_state == KioskState.confirm && _pendingCode == code && _pendingEndpoint != null) {
-      await _executeAction();
-      return;
-    }
-
-    // If different code while confirming, cancel and look up new employee
+    // If confirming, cancel and look up new scan
     _resetPending();
 
     setState(() { _state = KioskState.loading; _message = 'Looking up...'; });
@@ -155,8 +149,29 @@ class _KioskScreenState extends State<KioskScreen> {
     _pendingCode = null;
   }
 
+  IconData _actionIcon(String action) {
+    switch (action) {
+      case 'Clock In': return Icons.login;
+      case 'Break Out': return Icons.free_breakfast;
+      case 'Break In': return Icons.keyboard_return;
+      case 'Clock Out': return Icons.logout;
+      default: return Icons.access_time;
+    }
+  }
+
+  Color _actionColor(String action) {
+    switch (action) {
+      case 'Clock In': return const Color(0xFF50CD89);
+      case 'Break Out': return const Color(0xFFFFC700);
+      case 'Break In': return const Color(0xFF009EF7);
+      case 'Clock Out': return const Color(0xFFF1416C);
+      default: return const Color(0xFF009EF7);
+    }
+  }
+
   void _resetToIdle() {
     _resetPending();
+    _focusNode.requestFocus();
     setState(() {
       _state = KioskState.idle;
       _message = '';
@@ -300,26 +315,26 @@ class _KioskScreenState extends State<KioskScreen> {
               const SizedBox(height: 4),
               Text(_statusDetail, style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 14)),
             ],
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFC700).withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFFFFC700).withValues(alpha: 0.5)),
-              ),
-              child: Column(
-                children: [
-                  Text('Next: $_message', style: const TextStyle(color: Color(0xFFFFC700), fontSize: 22, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 6),
-                  Text('Scan again to confirm', style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 14)),
-                ],
+            const SizedBox(height: 20),
+            SizedBox(
+              width: 220,
+              height: 56,
+              child: ElevatedButton.icon(
+                onPressed: _executeAction,
+                icon: Icon(_actionIcon(_message), size: 22),
+                label: Text(_message, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _actionColor(_message),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  elevation: 4,
+                ),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             TextButton(
               onPressed: _resetToIdle,
-              child: Text('Cancel', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 13)),
+              child: Text('Cancel', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 14)),
             ),
           ],
         );
