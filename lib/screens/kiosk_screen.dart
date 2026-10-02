@@ -27,6 +27,7 @@ class _KioskScreenState extends State<KioskScreen> {
   String? _pendingAction;
   String? _pendingEndpoint;
   String? _pendingCode;
+  bool _pinRequired = false;
   Timer? _resetTimer;
   Timer? _clockTimer;
   String _currentTime = '';
@@ -57,6 +58,12 @@ class _KioskScreenState extends State<KioskScreen> {
     if (code.isEmpty) return;
     _inputCtrl.clear();
 
+    // While confirming a PIN-protected punch, the typed text is the PIN
+    if (_state == KioskState.confirm && _pinRequired) {
+      await _executeAction(pin: code);
+      return;
+    }
+
     // If confirming, cancel and look up new scan
     _resetPending();
 
@@ -66,6 +73,7 @@ class _KioskScreenState extends State<KioskScreen> {
       final lookupRes = await _dio.get('/lookup', queryParameters: {'code': code});
       final emp = lookupRes.data['employee'];
       final today = lookupRes.data['today'];
+      _pinRequired = lookupRes.data['pin_required'] == true;
 
       _employeeName = emp['name'] ?? '';
       _photoUrl = emp['photo_url'];
@@ -121,21 +129,34 @@ class _KioskScreenState extends State<KioskScreen> {
     }
   }
 
-  Future<void> _executeAction() async {
+  Future<void> _executeAction({String? pin}) async {
     setState(() { _state = KioskState.loading; _message = 'Recording...'; });
 
     try {
-      final res = await _dio.post(_pendingEndpoint!, data: {'code': _pendingCode});
+      final res = await _dio.post(_pendingEndpoint!, data: {'code': _pendingCode, if (pin != null) 'pin': pin});
 
       setState(() {
         _state = KioskState.success;
-        _message = res.data['message'] ?? '${_pendingAction} recorded';
+        _message = res.data['message'] ?? '$_pendingAction recorded';
         _statusDetail = res.data['tardiness'] ?? res.data['hours_worked'] ?? '';
       });
     } on DioException catch (e) {
+      final data = e.response?.data;
+      if (data is Map && data['pin_required'] == true) {
+        // Missing or wrong PIN: stay on the confirmation so they can try again
+        setState(() {
+          _state = KioskState.confirm;
+          _message = _pendingAction ?? _message;
+          _statusDetail = data['message'] ?? 'Enter your PIN';
+        });
+        _resetTimer?.cancel();
+        _resetTimer = Timer(const Duration(seconds: 15), _resetToIdle);
+        _focusNode.requestFocus();
+        return;
+      }
       setState(() {
         _state = KioskState.error;
-        _message = e.response?.data?['message'] ?? 'Failed';
+        _message = data is Map ? (data['message'] ?? 'Failed') : 'Failed';
       });
     }
 
@@ -248,9 +269,10 @@ class _KioskScreenState extends State<KioskScreen> {
                     controller: _inputCtrl,
                     focusNode: _focusNode,
                     autofocus: true,
+                    obscureText: _state == KioskState.confirm && _pinRequired,
                     style: const TextStyle(color: Colors.white, fontSize: 18),
                     decoration: InputDecoration(
-                      hintText: 'Scan barcode or enter employee number...',
+                      hintText: _state == KioskState.confirm && _pinRequired ? 'Enter your PIN...' : 'Scan barcode or enter employee number...',
                       hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.4)),
                       prefixIcon: Icon(Icons.qr_code_scanner, color: Colors.white.withValues(alpha: 0.5)),
                       filled: true,
@@ -314,6 +336,10 @@ class _KioskScreenState extends State<KioskScreen> {
             if (_statusDetail.isNotEmpty) ...[
               const SizedBox(height: 4),
               Text(_statusDetail, style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 14)),
+            ],
+            if (_pinRequired) ...[
+              const SizedBox(height: 10),
+              const Text('Type your PIN below, then press Enter', style: TextStyle(color: Color(0xFFFFC700), fontSize: 14, fontWeight: FontWeight.w600)),
             ],
             const SizedBox(height: 20),
             SizedBox(
