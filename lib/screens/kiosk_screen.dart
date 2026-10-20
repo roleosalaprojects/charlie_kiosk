@@ -31,13 +31,44 @@ class _KioskScreenState extends State<KioskScreen> {
   Timer? _resetTimer;
   Timer? _clockTimer;
   String _currentTime = '';
+  // Standby content from the server: company, pinned announcements, next holidays
+  Map<String, dynamic>? _standby;
+  Timer? _standbyTimer;
+  Timer? _rotateTimer;
+  int _announcementIndex = 0;
+  bool _offline = false;
 
   @override
   void initState() {
     super.initState();
     _updateClock();
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) => _updateClock());
+    _loadStandby();
+    _standbyTimer = Timer.periodic(const Duration(minutes: 5), (_) => _loadStandby());
+    _rotateTimer = Timer.periodic(const Duration(seconds: 12), (_) {
+      final n = _announcements.length;
+      if (n > 1 && mounted) setState(() => _announcementIndex = (_announcementIndex + 1) % n);
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _focusNode.requestFocus());
+  }
+
+  List<dynamic> get _announcements => (_standby?['announcements'] as List?) ?? const [];
+  List<dynamic> get _holidays => (_standby?['holidays'] as List?) ?? const [];
+  String get _companyName => (_standby?['company']?['name'] as String?) ?? 'Charlie HRMS';
+  String? get _logoUrl => _standby?['company']?['logo_url'] as String?;
+
+  Future<void> _loadStandby() async {
+    try {
+      final res = await _dio.get('/standby');
+      if (!mounted) return;
+      setState(() {
+        _standby = Map<String, dynamic>.from(res.data as Map);
+        _offline = false;
+        if (_announcementIndex >= _announcements.length) _announcementIndex = 0;
+      });
+    } on DioException {
+      if (mounted) setState(() => _offline = true);
+    }
   }
 
   void _updateClock() {
@@ -50,6 +81,8 @@ class _KioskScreenState extends State<KioskScreen> {
     _focusNode.dispose();
     _resetTimer?.cancel();
     _clockTimer?.cancel();
+    _standbyTimer?.cancel();
+    _rotateTimer?.cancel();
     super.dispose();
   }
 
@@ -133,7 +166,7 @@ class _KioskScreenState extends State<KioskScreen> {
     setState(() { _state = KioskState.loading; _message = 'Recording...'; });
 
     try {
-      final res = await _dio.post(_pendingEndpoint!, data: {'code': _pendingCode, if (pin != null) 'pin': pin});
+      final res = await _dio.post(_pendingEndpoint!, data: {'code': _pendingCode, 'pin': ?pin});
 
       setState(() {
         _state = KioskState.success;
@@ -236,11 +269,18 @@ class _KioskScreenState extends State<KioskScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Row(
+                      Row(
                         children: [
-                          Icon(Icons.business, color: Color(0xFF009EF7), size: 28),
-                          SizedBox(width: 10),
-                          Text('Charlie HRMS', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
+                          if (_logoUrl != null && _logoUrl!.isNotEmpty)
+                            CachedNetworkImage(imageUrl: _logoUrl!, height: 32, errorWidget: (_, _, _) => const Icon(Icons.business, color: Color(0xFF009EF7), size: 28))
+                          else
+                            const Icon(Icons.business, color: Color(0xFF009EF7), size: 28),
+                          const SizedBox(width: 10),
+                          Text(_companyName, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
+                          if (_offline) ...[
+                            const SizedBox(width: 12),
+                            Icon(Icons.cloud_off, size: 16, color: Colors.white.withValues(alpha: 0.4)),
+                          ],
                         ],
                       ),
                       Column(
@@ -304,14 +344,7 @@ class _KioskScreenState extends State<KioskScreen> {
   Widget _buildContent() {
     switch (_state) {
       case KioskState.idle:
-        return Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.fingerprint, size: 120, color: Colors.white.withValues(alpha: 0.15)),
-            const SizedBox(height: 20),
-            Text('Scan your ID or enter employee number', style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 18)),
-          ],
-        );
+        return _buildStandby();
 
       case KioskState.loading:
         return const Column(
@@ -408,5 +441,102 @@ class _KioskScreenState extends State<KioskScreen> {
           ],
         );
     }
+  }
+  /// Idle screen: the scan prompt and the next holidays on the left, pinned announcements on the right.
+  Widget _buildStandby() {
+    final prompt = Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.fingerprint, size: 110, color: Colors.white.withValues(alpha: 0.15)),
+        const SizedBox(height: 16),
+        Text('Scan your ID or enter employee number', textAlign: TextAlign.center, style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 18)),
+        if (_holidays.isNotEmpty) ...[
+          const SizedBox(height: 28),
+          Text('COMING UP', style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 11, letterSpacing: 1.5, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8, runSpacing: 8, alignment: WrapAlignment.center,
+            children: [for (final h in _holidays) _holidayChip(h)],
+          ),
+        ],
+      ],
+    );
+    if (_announcements.isEmpty) return prompt;
+    return LayoutBuilder(builder: (context, constraints) {
+      final wide = constraints.maxWidth > 700;
+      final card = _announcementCard(_announcements[_announcementIndex % _announcements.length]);
+      if (!wide) {
+        return Column(mainAxisAlignment: MainAxisAlignment.center, children: [Expanded(child: prompt), Padding(padding: const EdgeInsets.symmetric(horizontal: 24), child: card)]);
+      }
+      return Row(
+        children: [
+          Expanded(child: prompt),
+          Container(width: 1, height: 220, color: Colors.white.withValues(alpha: 0.08)),
+          Expanded(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 32), child: card)),
+        ],
+      );
+    });
+  }
+
+  Widget _holidayChip(dynamic h) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.07), borderRadius: BorderRadius.circular(10)),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(h['label'] ?? '', style: const TextStyle(color: Color(0xFFFFC700), fontSize: 12, fontWeight: FontWeight.w700)),
+          Text(h['name'] ?? '', style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 13)),
+        ],
+      ),
+    );
+  }
+
+  Widget _announcementCard(dynamic a) {
+    final n = _announcements.length;
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 400),
+      child: Container(
+        key: ValueKey(_announcementIndex),
+        constraints: const BoxConstraints(maxWidth: 520),
+        padding: const EdgeInsets.all(22),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFF009EF7).withValues(alpha: 0.35)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.push_pin, size: 16, color: Color(0xFF009EF7)),
+                const SizedBox(width: 6),
+                Text('ANNOUNCEMENT', style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11, letterSpacing: 1.5, fontWeight: FontWeight.w700)),
+                const Spacer(),
+                Text(a['published_at'] ?? '', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(a['title'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Text(a['body'] ?? '', maxLines: 6, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 15, height: 1.4)),
+            if (n > 1) ...[
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  for (var i = 0; i < n; i++)
+                    Container(
+                      width: i == _announcementIndex % n ? 18 : 6, height: 6, margin: const EdgeInsets.only(right: 5),
+                      decoration: BoxDecoration(color: Colors.white.withValues(alpha: i == _announcementIndex % n ? 0.9 : 0.3), borderRadius: BorderRadius.circular(3)),
+                    ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }
