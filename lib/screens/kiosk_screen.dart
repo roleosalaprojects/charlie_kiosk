@@ -129,8 +129,8 @@ class _KioskScreenState extends State<KioskScreen> {
       } else {
         setState(() {
           _state = KioskState.success;
-          _message = 'Day Complete';
-          _statusDetail = 'In: ${today['clock_in']} | Out: ${today['clock_out']}';
+          _message = "You're all done for today";
+          _statusDetail = 'In ${today['clock_in']} · Out ${today['clock_out']}';
         });
         _scheduleReset();
         return;
@@ -168,10 +168,11 @@ class _KioskScreenState extends State<KioskScreen> {
     try {
       final res = await _dio.post(_pendingEndpoint!, data: {'code': _pendingCode, 'pin': ?pin});
 
+      final time = res.data['clock_in'] ?? res.data['clock_out'] ?? DateFormat('hh:mm a').format(DateTime.now());
       setState(() {
         _state = KioskState.success;
-        _message = res.data['message'] ?? '$_pendingAction recorded';
-        _statusDetail = res.data['tardiness'] ?? res.data['hours_worked'] ?? '';
+        _message = '$_pendingAction at $time';
+        _statusDetail = _thanks(_pendingAction ?? '');
       });
     } on DioException catch (e) {
       final data = e.response?.data;
@@ -203,6 +204,23 @@ class _KioskScreenState extends State<KioskScreen> {
     _pendingCode = null;
   }
 
+  String get _greeting {
+    final h = DateTime.now().hour;
+    if (h < 12) return 'Good morning';
+    if (h < 18) return 'Good afternoon';
+    return 'Good evening';
+  }
+
+  String _thanks(String action) {
+    switch (action) {
+      case 'Clock In': return 'Have a good shift!';
+      case 'Break Out': return 'Enjoy your break.';
+      case 'Break In': return 'Welcome back.';
+      case 'Clock Out': return 'Thanks for today. See you!';
+      default: return '';
+    }
+  }
+
   IconData _actionIcon(String action) {
     switch (action) {
       case 'Clock In': return Icons.login;
@@ -217,9 +235,9 @@ class _KioskScreenState extends State<KioskScreen> {
     switch (action) {
       case 'Clock In': return const Color(0xFF50CD89);
       case 'Break Out': return const Color(0xFFFFC700);
-      case 'Break In': return const Color(0xFF009EF7);
+      case 'Break In': return const Color(0xFF1ABC9C);
       case 'Clock Out': return const Color(0xFFF1416C);
-      default: return const Color(0xFF009EF7);
+      default: return const Color(0xFF2ECC71);
     }
   }
 
@@ -258,7 +276,7 @@ class _KioskScreenState extends State<KioskScreen> {
         child: Container(
           decoration: const BoxDecoration(
             gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter,
-              colors: [Color(0xFF1a1a2e), Color(0xFF16213e)]),
+              colors: [Color(0xFF0F1A14), Color(0xFF14261B)]),
           ),
           child: SafeArea(
             child: Column(
@@ -272,9 +290,9 @@ class _KioskScreenState extends State<KioskScreen> {
                       Row(
                         children: [
                           if (_logoUrl != null && _logoUrl!.isNotEmpty)
-                            CachedNetworkImage(imageUrl: _logoUrl!, height: 32, errorWidget: (_, _, _) => const Icon(Icons.business, color: Color(0xFF009EF7), size: 28))
+                            CachedNetworkImage(imageUrl: _logoUrl!, height: 32, errorWidget: (_, _, _) => const Icon(Icons.business, color: Color(0xFF2ECC71), size: 28))
                           else
-                            const Icon(Icons.business, color: Color(0xFF009EF7), size: 28),
+                            const Icon(Icons.business, color: Color(0xFF2ECC71), size: 28),
                           const SizedBox(width: 10),
                           Text(_companyName, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
                           if (_offline) ...[
@@ -312,13 +330,13 @@ class _KioskScreenState extends State<KioskScreen> {
                     obscureText: _state == KioskState.confirm && _pinRequired,
                     style: const TextStyle(color: Colors.white, fontSize: 18),
                     decoration: InputDecoration(
-                      hintText: _state == KioskState.confirm && _pinRequired ? 'Enter your PIN...' : 'Scan barcode or enter employee number...',
+                      hintText: _state == KioskState.confirm && _pinRequired ? 'Type your PIN and press Enter' : 'Employee number',
                       hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.4)),
                       prefixIcon: Icon(Icons.qr_code_scanner, color: Colors.white.withValues(alpha: 0.5)),
                       filled: true,
                       fillColor: Colors.white.withValues(alpha: 0.1),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF009EF7), width: 2)),
+                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF2ECC71), width: 2)),
                     ),
                     onSubmitted: _onSubmit,
                   ),
@@ -350,9 +368,9 @@ class _KioskScreenState extends State<KioskScreen> {
         return const Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            SizedBox(width: 60, height: 60, child: CircularProgressIndicator(color: Color(0xFF009EF7), strokeWidth: 3)),
+            SizedBox(width: 60, height: 60, child: CircularProgressIndicator(color: Color(0xFF2ECC71), strokeWidth: 3)),
             SizedBox(height: 20),
-            Text('Processing...', style: TextStyle(color: Colors.white, fontSize: 18)),
+            Text('One moment...', style: TextStyle(color: Colors.white, fontSize: 18)),
           ],
         );
 
@@ -365,7 +383,8 @@ class _KioskScreenState extends State<KioskScreen> {
             else
               CircleAvatar(radius: 50, backgroundColor: Colors.white.withValues(alpha: 0.1), child: const Icon(Icons.person, size: 50, color: Colors.white)),
             const SizedBox(height: 16),
-            Text(_employeeName, style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w700)),
+            Text('Hi, ${_employeeName.split(' ').first}!', style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w700)),
+            Text(_employeeName, style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 15)),
             if (_statusDetail.isNotEmpty) ...[
               const SizedBox(height: 4),
               Text(_statusDetail, style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 14)),
@@ -376,8 +395,8 @@ class _KioskScreenState extends State<KioskScreen> {
             ],
             const SizedBox(height: 20),
             SizedBox(
-              width: 220,
-              height: 56,
+              width: 260,
+              height: 64,
               child: ElevatedButton.icon(
                 onPressed: _executeAction,
                 icon: Icon(_actionIcon(_message), size: 22),
@@ -393,7 +412,7 @@ class _KioskScreenState extends State<KioskScreen> {
             const SizedBox(height: 14),
             TextButton(
               onPressed: _resetToIdle,
-              child: Text('Cancel', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 14)),
+              child: Text("That's not me", style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 14)),
             ),
           ],
         );
@@ -413,20 +432,20 @@ class _KioskScreenState extends State<KioskScreen> {
             Text(_employeeName, style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w700)),
             const SizedBox(height: 8),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              decoration: BoxDecoration(color: const Color(0xFF50CD89).withValues(alpha: 0.2), borderRadius: BorderRadius.circular(12)),
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+              decoration: BoxDecoration(color: const Color(0xFF2ECC71).withValues(alpha: 0.18), borderRadius: BorderRadius.circular(14)),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.check_circle, color: Color(0xFF50CD89), size: 22),
-                  const SizedBox(width: 8),
-                  Text(_message, style: const TextStyle(color: Color(0xFF50CD89), fontSize: 16, fontWeight: FontWeight.w600)),
+                  const Icon(Icons.check_circle, color: Color(0xFF2ECC71), size: 26),
+                  const SizedBox(width: 10),
+                  Text(_message, style: const TextStyle(color: Color(0xFF2ECC71), fontSize: 19, fontWeight: FontWeight.w700)),
                 ],
               ),
             ),
             if (_statusDetail.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(_statusDetail, style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 14)),
+              const SizedBox(height: 10),
+              Text(_statusDetail, style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 16)),
             ],
           ],
         );
@@ -447,9 +466,11 @@ class _KioskScreenState extends State<KioskScreen> {
     final prompt = Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(Icons.fingerprint, size: 110, color: Colors.white.withValues(alpha: 0.15)),
-        const SizedBox(height: 16),
-        Text('Scan your ID or enter employee number', textAlign: TextAlign.center, style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 18)),
+        Icon(Icons.waving_hand_outlined, size: 72, color: const Color(0xFF2ECC71).withValues(alpha: 0.8)),
+        const SizedBox(height: 14),
+        Text('$_greeting!', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 6),
+        Text('Tap your ID on the reader or type your employee number', textAlign: TextAlign.center, style: TextStyle(color: Colors.white.withValues(alpha: 0.55), fontSize: 16)),
         if (_holidays.isNotEmpty) ...[
           const SizedBox(height: 28),
           Text('COMING UP', style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 11, letterSpacing: 1.5, fontWeight: FontWeight.w700)),
@@ -503,7 +524,7 @@ class _KioskScreenState extends State<KioskScreen> {
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFF009EF7).withValues(alpha: 0.35)),
+          border: Border.all(color: const Color(0xFF2ECC71).withValues(alpha: 0.35)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -511,7 +532,7 @@ class _KioskScreenState extends State<KioskScreen> {
           children: [
             Row(
               children: [
-                const Icon(Icons.push_pin, size: 16, color: Color(0xFF009EF7)),
+                const Icon(Icons.push_pin, size: 16, color: Color(0xFF2ECC71)),
                 const SizedBox(width: 6),
                 Text('ANNOUNCEMENT', style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11, letterSpacing: 1.5, fontWeight: FontWeight.w700)),
                 const Spacer(),

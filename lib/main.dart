@@ -26,7 +26,7 @@ class CharlieKiosk extends StatelessWidget {
       title: 'Charlie Kiosk',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorSchemeSeed: const Color(0xFF009EF7),
+        colorSchemeSeed: const Color(0xFF2ECC71),
         useMaterial3: true,
         brightness: Brightness.dark,
       ),
@@ -70,17 +70,17 @@ class _SplashScreenState extends State<SplashScreen> {
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter,
-            colors: [Color(0xFF1a1a2e), Color(0xFF16213e)]),
+            colors: [Color(0xFF0F1A14), Color(0xFF14261B)]),
         ),
         child: const Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.business, size: 64, color: Color(0xFF009EF7)),
+              Icon(Icons.business, size: 64, color: Color(0xFF2ECC71)),
               SizedBox(height: 16),
               Text('Charlie Kiosk', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: Colors.white)),
               SizedBox(height: 24),
-              CircularProgressIndicator(color: Color(0xFF009EF7)),
+              CircularProgressIndicator(color: Color(0xFF2ECC71)),
             ],
           ),
         ),

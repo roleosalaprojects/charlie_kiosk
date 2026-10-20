@@ -75,7 +75,7 @@ class _SetupScreenState extends State<SetupScreen> {
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
-          gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF0078D4), Color(0xFF00BCF2)]),
+          gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF1E8449), Color(0xFF2ECC71)]),
         ),
         child: SafeArea(
           child: Center(
@@ -96,7 +96,7 @@ class _SetupScreenState extends State<SetupScreen> {
                   Container(
                     width: 80, height: 80,
                     decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
-                    child: const Center(child: Text('C', style: TextStyle(fontSize: 40, fontWeight: FontWeight.w800, color: Color(0xFF009EF7)))),
+                    child: const Center(child: Text('C', style: TextStyle(fontSize: 40, fontWeight: FontWeight.w800, color: Color(0xFF2ECC71)))),
                   ),
                   const SizedBox(height: 16),
                   const Text('Kiosk Setup', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Colors.white)),
@@ -166,7 +166,7 @@ class _SetupScreenState extends State<SetupScreen> {
                           height: 48,
                           child: ElevatedButton(
                             onPressed: _save,
-                            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF009EF7), foregroundColor: Colors.white),
+                            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2ECC71), foregroundColor: Colors.white),
                             child: const Text('Save & Start Kiosk', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                           ),
                         ),
